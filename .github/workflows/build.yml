@@ -31,6 +31,8 @@ jobs:
             go-version: 1.23.1
           id: go
 
+        - name: Install build deps
+          run: sudo apt-get install libxcursor-dev libxrandr-dev libxinerama-dev libxi-dev
         - name: Install dependencies
           run: go mod download
 
