@@ -16,6 +16,8 @@ jobs:
         with:
           go-version-file: go.mod
           check-latest: true
+      - name: Depedencies
+        run: sudo apt gcc install libc6-dev libgl1-mesa-dev libxcursor-dev libxi-dev libxinerama-dev libxrandr-dev libxxf86vm-dev libasound2-dev pkg-config
       - name: GoReleaser
         uses: goreleaser/goreleaser-action@v5
         with:

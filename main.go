@@ -1,6 +1,7 @@
 package main
 
 import (
+	"embed"
 	"fmt"
 	"log"
 	"math"
@@ -8,6 +9,7 @@ import (
 	"os"
 	"strconv"
 
+	_ "embed"
 	"image/color"
 	_ "image/jpeg"
 	_ "image/png"
@@ -16,6 +18,9 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 )
+
+//go:embed assets
+var fs embed.FS
 
 var (
 	bgImage         *ebiten.Image
@@ -80,14 +85,16 @@ func (g *Game) drawCircle(screen *ebiten.Image, x, y, radius int, clr color.Colo
 
 func init() {
 	// load image fond.jpg
-	img, _, err := ebitenutil.NewImageFromFile("fond.jpg")
+	fond, _ := fs.Open("assets/fond.jpg")
+	img, _, err := ebitenutil.NewImageFromReader(fond)
 
 	if err != nil {
 		log.Fatal(err)
 	}
 	bgImage = img
 
-	fishSprite, _, err := ebitenutil.NewImageFromFile("poisson.png")
+	fishfile, _ := fs.Open("assets/poisson.png")
+	fishSprite, _, err := ebitenutil.NewImageFromReader(fishfile)
 
 	if err != nil {
 		log.Fatal(err)
