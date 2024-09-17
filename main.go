@@ -3,6 +3,7 @@ package main
 import (
 	"embed"
 	"fmt"
+	"image"
 	"log"
 	"math"
 	"math/rand"
@@ -250,7 +251,7 @@ func (f *Fish) LifeTick(g *Game) {
 		}
 	}
 	for _, food := range f.NearbyFood(g) {
-		// Make the fish go towards the food
+		// Make the fish go towards the food (why 20? Don't ask too many questions)
 		f.vx = (food.x - f.x) / (20 - f.speed)
 		f.vy = (food.y - f.y) / (20 - f.speed)
 		// remove food as it got eaten
@@ -318,7 +319,7 @@ func main() {
 		case "--fullscreen":
 			ebiten.SetFullscreen(true)
 		case "--screen":
-			w, h := ebiten.ScreenSizeInFullscreen()
+			w, h := ebiten.Monitor().Size()
 			WINDOW_WIDTH = w
 			WINDOW_HEIGHT = h
 		case "--tps":
@@ -345,10 +346,35 @@ func main() {
 				os.Exit(1)
 			}
 			TIME_MULTIPLIER = parsed
+		case "-w":
+			if len(args) == i+1 {
+				fmt.Printf("Usage: -w <width> (default: %d)", WINDOW_WIDTH)
+				os.Exit(1)
+			}
+			parsed, err := strconv.Atoi(args[i+1])
+			if err != nil {
+				fmt.Println("Invalid width")
+				os.Exit(1)
+			}
+			WINDOW_WIDTH = parsed
+		case "-h":
+			if len(args) == i+1 {
+				fmt.Printf("Usage: -h <height> (default: %d)", WINDOW_HEIGHT)
+				os.Exit(1)
+			}
+			parsed, err := strconv.Atoi(args[i+1])
+			if err != nil {
+				fmt.Println("Invalid height")
+				os.Exit(1)
+			}
+			WINDOW_HEIGHT = parsed
 		}
+
 	}
 	ebiten.SetWindowSize(WINDOW_WIDTH, WINDOW_HEIGHT)
 	ebiten.SetWindowTitle("Fishsim")
+	var windowIcons []image.Image = []image.Image{fishImage.SubImage(image.Rect(0, 0, FISH_SIZE, FISH_SIZE))}
+	ebiten.SetWindowIcon(windowIcons)
 
 	if err := ebiten.RunGame(&Game{}); err != nil {
 		log.Fatal(err)
