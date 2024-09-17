@@ -8,12 +8,9 @@ jobs:
   release:
     strategy:
       matrix:
-        os: 
-          - {os: "ubuntu-latest", ext:""}
-          - {os: "windows-latest", ext:".exe"}
-          - {os: "macos-latest", ext:""}
-    name: Build on ${{ matrix.os.os }}
-    runs-on: ${{ matrix.os.os.os }}
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -27,14 +24,29 @@ jobs:
         run: |
           sudo apt update
           sudo apt install -y libasound2-dev libgl1-mesa-dev libxcursor-dev libxi-dev libxinerama-dev libxrandr-dev libxxf86vm-dev
-      - name: Build for ${{ matrix.os.os}}
-        run: go build -o /bin/fishsim-${{matrix.os.os}}-${{ github.event.release.tag_name }}${{ matrix.os.ext }}
+      - name: Build for ${{ matrix.os}}
+        run: go build -o /bin/fishsim-${{matrix.os}}-${{ github.event.release.tag_name }} .
+      - name: Add .exe to windows binary
+        if: runner.os == 'Windows'
+        run: mv fishsim-windows-${{ github.event.release.tag_name }} fishsim-windows-${{ github.event.release.tag_name }}.exe
       - name: Upload
+        if: runner.os != 'Windows'
         uses: actions/upload-release-asset@v1.0.1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ github.event.release.upload_url }}
           asset_path: ./bin
-          asset_name: fishsim-${{ matrix.os.os }}-${{ github.event.release.tag_name }}${{ matrix.os.ext }}
+          asset_name: fishsim-${{ matrix.os }}-${{ github.event.release.tag_name }}
+          asset_content_type: binary/octet-stream
+
+      - name: Upload .exe
+        if: runner.os == 'Windows'
+        uses: actions/upload-release-asset@v1.0.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: ./bin/fishsim-windows-${{ github.event.release.tag_name }}.exe
+          asset_name: fishsim-windows-${{ github.event.release.tag_name }}.exe
           asset_content_type: binary/octet-stream
