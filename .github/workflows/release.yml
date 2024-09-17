@@ -25,10 +25,10 @@ jobs:
           sudo apt update
           sudo apt install -y libasound2-dev libgl1-mesa-dev libxcursor-dev libxi-dev libxinerama-dev libxrandr-dev libxxf86vm-dev
       - name: Build for ${{ matrix.os}}
-        run: go build -o /bin/fishsim-${{matrix.os}}-${{ github.event.release.tag_name }} .
+        run: go build -o ./bin/fishsim-${{matrix.os}}-${{ github.event.release.tag_name }} .
       - name: Add .exe to windows binary
         if: runner.os == 'Windows'
-        run: mv fishsim-windows-${{ github.event.release.tag_name }} fishsim-windows-${{ github.event.release.tag_name }}.exe
+        run: mv ./bin/fishsim-windows-${{ github.event.release.tag_name }} ./bin/fishsim-windows-${{ github.event.release.tag_name }}.exe
       - name: Upload
         if: runner.os != 'Windows'
         uses: actions/upload-release-asset@v1.0.1
