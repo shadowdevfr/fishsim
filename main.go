@@ -36,7 +36,7 @@ var (
 	avgSpeed           = 0.0 // Do not change that
 	avgVision          = 0.0 // Do not change that
 	avgHealth          = 0.0 // Do not change that
-	placingFood        = false
+	isClicking         = false
 	isShiftPressed     = false
 	foodPlaceRatelimit = 0 // When this reaches 100, reset to place food (see Update())
 	swatterMode        = false
@@ -115,8 +115,8 @@ func (g *Game) Update() error {
 	for _, fish := range g.fishes.fishes {
 		fish.x += fish.vx
 		fish.y += fish.vy
-		go fish.OutOfBoundsDetection()
-		go fish.LifeTick(g)
+		fish.OutOfBoundsDetection()
+		fish.LifeTick(g)
 		// Have 1/2000 chance of changing direction
 		if rand.Intn(2000) == 0 {
 			fish.RandDirectionAndSpeed()
@@ -165,11 +165,11 @@ func (g *Game) Update() error {
 		}
 	}
 
-	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButton0) && isShiftPressed {
-		placingFood = true
+	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButton0) {
+		isClicking = true
 	} else if inpututil.IsMouseButtonJustReleased(ebiten.MouseButton0) {
-		placingFood = false
-	} else if placingFood {
+		isClicking = false
+	} else if isClicking && isShiftPressed {
 		foodPlaceRatelimit++
 		if foodPlaceRatelimit >= 5 {
 			foodPlaceRatelimit = 0
@@ -257,7 +257,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		}
 	}
 
-	if !placingFood && isShiftPressed {
+	if !isClicking && isShiftPressed {
 		x, y := ebiten.CursorPosition()
 		vector.DrawFilledCircle(screen, float32(x), float32(y), 5, color.RGBA{255, 255, 0, 50}, false)
 		ebitenutil.DebugPrintAt(screen, "placer bouffe", x, y)
@@ -265,13 +265,13 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	if swatterMode {
 		x, y := ebiten.CursorPosition()
 		g.swop.GeoM.Reset()
-		g.swop.GeoM.Translate(float64(x), float64(y))
+SSSSSSSSSSs float64(y))
 		screen.DrawImage(swatterImage, &g.swop)
 	}
 }
 
 func (f *Fish) OutOfBoundsDetection() {
-	if f.x <= 0 || f.x >= float64(WINDOW_WIDTH) {
+	if f.x <= 0 || f.x >= float64(WINDOW_WIDssssTH) {
 		f.vx = -f.vx
 	}
 
