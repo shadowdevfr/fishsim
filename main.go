@@ -8,6 +8,7 @@ import (
 	"math"
 	"math/rand"
 	"os"
+	"runtime/pprof"
 	"strconv"
 
 	_ "embed"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
+	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 )
 
@@ -24,19 +26,25 @@ import (
 var fs embed.FS
 
 var (
-	bgImage         *ebiten.Image
-	fishImage       *ebiten.Image
-	WINDOW_WIDTH    = 1920
-	WINDOW_HEIGHT   = 1080
-	TIME_MULTIPLIER = 1.0
-	MAX_FOOD        = 30
-	avgSpeed        = 0.0 // Do not change that
-	avgVision       = 0.0 // Do not change that
-	avgHealth       = 0.0 // Do not change that
+	bgImage            *ebiten.Image
+	fishImage          *ebiten.Image
+	swatterImage       *ebiten.Image
+	WINDOW_WIDTH       = 1080
+	WINDOW_HEIGHT      = 720
+	TIME_MULTIPLIER    = 1.0
+	MAX_FOOD           = 30
+	avgSpeed           = 0.0 // Do not change that
+	avgVision          = 0.0 // Do not change that
+	avgHealth          = 0.0 // Do not change that
+	placingFood        = false
+	isShiftPressed     = false
+	foodPlaceRatelimit = 0 // When this reaches 100, reset to place food (see Update())
+	swatterMode        = false
+	debugPrints        = false
 )
 
 const (
-	FISH_SIZE      = 20
+	FISH_SIZE      = 30
 	INITIAL_FISHES = 10
 )
 
@@ -70,18 +78,7 @@ type Game struct {
 	fishes Fishes
 	foods  []*Food
 	op     ebiten.DrawImageOptions
-}
-
-func (g *Game) drawCircle(screen *ebiten.Image, x, y, radius int, clr color.Color) {
-	radius64 := float64(radius)
-	minAngle := math.Acos(1 - 1/radius64)
-	for angle := float64(0); angle <= 360; angle += minAngle {
-		xDelta := radius64 * math.Cos(angle)
-		yDelta := radius64 * math.Sin(angle)
-		x1 := int(math.Round(float64(x) + xDelta))
-		y1 := int(math.Round(float64(y) + yDelta))
-		screen.Set(x1, y1, clr)
-	}
+	swop   ebiten.DrawImageOptions //swatter img options
 }
 
 func init() {
@@ -102,6 +99,15 @@ func init() {
 	}
 
 	fishImage = fishSprite
+
+	swatterfile, _ := fs.Open("assets/swatter.png")
+	swatterSprite, _, err := ebitenutil.NewImageFromReader(swatterfile)
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	swatterImage = swatterSprite
 }
 
 func (g *Game) Update() error {
@@ -109,8 +115,8 @@ func (g *Game) Update() error {
 	for _, fish := range g.fishes.fishes {
 		fish.x += fish.vx
 		fish.y += fish.vy
-		fish.OutOfBoundsDetection()
-		fish.LifeTick(g)
+		go fish.OutOfBoundsDetection()
+		go fish.LifeTick(g)
 		// Have 1/2000 chance of changing direction
 		if rand.Intn(2000) == 0 {
 			fish.RandDirectionAndSpeed()
@@ -121,6 +127,54 @@ func (g *Game) Update() error {
 		// Have 1/1000 chance of generating food
 		if rand.Intn(1000) == 0 {
 			g.GenerateFood()
+		}
+	}
+
+	// Handle shifting
+	if inpututil.IsKeyJustPressed(ebiten.KeyShift) {
+		isShiftPressed = true
+	} else if inpututil.IsKeyJustReleased(ebiten.KeyShift) {
+		isShiftPressed = false
+	}
+
+	// Handle S (for swatter)
+	if inpututil.IsKeyJustPressed(ebiten.KeyS) {
+		swatterMode = true
+		ebiten.SetCursorMode(ebiten.CursorModeHidden)
+	} else if inpututil.IsKeyJustReleased(ebiten.KeyS) {
+		swatterMode = false
+		ebiten.SetCursorMode(ebiten.CursorModeVisible)
+	}
+
+	// Handle D (for debug)
+	if inpututil.IsKeyJustPressed(ebiten.KeyD) {
+		debugPrints = true
+	} else if inpututil.IsKeyJustReleased(ebiten.KeyD) {
+		debugPrints = false
+	}
+
+	// Swatter logic
+	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButton0) && swatterMode {
+		// Find mosquitos (fishes in code) near the cursor
+		x, y := ebiten.CursorPosition()
+		for _, f := range g.fishes.fishes {
+			distance := math.Sqrt(math.Pow(f.x-float64(x), 2) + math.Pow(f.y-float64(y), 2))
+			if distance <= 40 {
+				f.health = 0
+			}
+		}
+	}
+
+	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButton0) && isShiftPressed {
+		placingFood = true
+	} else if inpututil.IsMouseButtonJustReleased(ebiten.MouseButton0) {
+		placingFood = false
+	} else if placingFood {
+		foodPlaceRatelimit++
+		if foodPlaceRatelimit >= 5 {
+			foodPlaceRatelimit = 0
+			x, y := ebiten.CursorPosition()
+			g.foods = append(g.foods, &Food{x: float64(x), y: float64(y), healthGain: rand.Float64()*9 + 1})
 		}
 	}
 	return nil
@@ -158,8 +212,11 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 	screen.DrawImage(bgImage, nil)
 
-	ebitenutil.DebugPrint(screen, fmt.Sprintf("FPS: %0.2f\nTPS: %0.2f\nFishes: %d\nFood: %d\nAvg speed: %0.2f\nAvg vision: %0.2f\nAvg health: %0.2f", ebiten.ActualFPS(), ebiten.ActualTPS(), len(g.fishes.fishes), len(g.foods), avgSpeed, avgVision, avgHealth))
-
+	if debugPrints {
+		ebitenutil.DebugPrint(screen, fmt.Sprintf("FPS: %0.2f\nTPS: %0.2f\nFishes: %d\nFood: %d\nAvg speed: %0.2f\nAvg vision: %0.2f\nAvg health: %0.2f", ebiten.ActualFPS(), ebiten.ActualTPS(), len(g.fishes.fishes), len(g.foods), avgSpeed, avgVision, avgHealth))
+	} else {
+		ebitenutil.DebugPrint(screen, fmt.Sprintf("FPS: %0.2f\nTPS: %0.2f\n\nPress D for debug", ebiten.ActualFPS(), ebiten.ActualTPS()))
+	}
 	if len(g.fishes.fishes) == 0 {
 		// No fishes generated yet, generate the initial batch
 		for range INITIAL_FISHES {
@@ -167,7 +224,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		}
 	}
 
-	for _, fish := range g.fishes.fishes {
+	for i, fish := range g.fishes.fishes {
 		g.op.GeoM.Reset()
 		if fish.vx > 0 {
 			g.op.GeoM.Scale(-1, 1)
@@ -178,12 +235,16 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		if fish.vx > 0 {
 			circlex = fish.x - FISH_SIZE/2
 		}
-		circleColor := color.RGBA{255, 255, 255, 255}
-		if fish.canReproduce {
-			circleColor = color.RGBA{0, 255, 0, 255}
+
+		if debugPrints {
+			circleColor := color.RGBA{255, 255, 255, 255}
+			if fish.canReproduce {
+				circleColor = color.RGBA{0, 255, 0, 255}
+			}
+			vector.StrokeCircle(screen, float32(circlex), float32(fish.y+FISH_SIZE/2), float32(fish.vision), 1, circleColor, false)
+
+			ebitenutil.DebugPrintAt(screen, fmt.Sprintf("#%d\nx: %0.2f\ny: %0.2f\nvx: %0.2f\nvy: %0.2f\nspeed: %0.2f\nvision: %0.2f\nhealth: %0.2f\nage: %0.2f\ncanReproduce: %t\nlastReproduction: %0.2f", i, fish.x, fish.y, fish.vx, fish.vy, fish.speed, fish.vision, fish.health, fish.age, fish.canReproduce, fish.lastReproduction), int(fish.x), int(fish.y+FISH_SIZE))
 		}
-		g.drawCircle(screen, int(circlex), int(fish.y+FISH_SIZE/2), int(fish.vision), circleColor)
-		ebitenutil.DebugPrintAt(screen, fmt.Sprintf("x: %0.2f\ny: %0.2f\nvx: %0.2f\nvy: %0.2f\nspeed: %0.2f\nvision: %0.2f\nhealth: %0.2f\nage: %0.2f\ncanReproduce: %t\nlastReproduction: %0.2f", fish.x, fish.y, fish.vx, fish.vy, fish.speed, fish.vision, fish.health, fish.age, fish.canReproduce, fish.lastReproduction), int(fish.x), int(fish.y+FISH_SIZE))
 		for _, food := range fish.NearbyFood(g) {
 			vector.StrokeLine(screen, float32(fish.x), float32(fish.y), float32(food.x), float32(food.y), 2, color.RGBA{255, 0, 0, 0}, false)
 		}
@@ -191,7 +252,21 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 	for _, food := range g.foods {
 		vector.DrawFilledCircle(screen, float32(food.x), float32(food.y), 5, color.RGBA{255, 255, 0, 255}, false)
-		ebitenutil.DebugPrintAt(screen, fmt.Sprintf("healthGain: %0.2f", food.healthGain), int(food.x), int(food.y))
+		if debugPrints {
+			ebitenutil.DebugPrintAt(screen, fmt.Sprintf("healthGain: %0.2f", food.healthGain), int(food.x), int(food.y))
+		}
+	}
+
+	if !placingFood && isShiftPressed {
+		x, y := ebiten.CursorPosition()
+		vector.DrawFilledCircle(screen, float32(x), float32(y), 5, color.RGBA{255, 255, 0, 50}, false)
+		ebitenutil.DebugPrintAt(screen, "placer bouffe", x, y)
+	}
+	if swatterMode {
+		x, y := ebiten.CursorPosition()
+		g.swop.GeoM.Reset()
+		g.swop.GeoM.Translate(float64(x), float64(y))
+		screen.DrawImage(swatterImage, &g.swop)
 	}
 }
 
@@ -210,7 +285,7 @@ func (f *Fish) LifeTick(g *Game) {
 		return
 	}
 	vsecond := (1 / ebiten.ActualTPS()) * TIME_MULTIPLIER
-	f.health -= vsecond + 0.005 // make them loose life faster, to make sure it's generating new fishes
+	//f.health -= vsecond + 0.005 // make them loose life faster, to make sure it's generating new fishes
 	f.age += vsecond
 	f.lastReproduction += vsecond
 	if f.health <= 0 {
@@ -368,6 +443,15 @@ func main() {
 				os.Exit(1)
 			}
 			WINDOW_HEIGHT = parsed
+		case "--profiling":
+			f, err := os.Create("fishsim.prof")
+			if err != nil {
+				log.Fatal(err)
+			}
+			pprof.StartCPUProfile(f)
+			defer pprof.StopCPUProfile()
+		case "-d":
+			debugPrints = true
 		}
 
 	}
@@ -379,5 +463,5 @@ func main() {
 	if err := ebiten.RunGame(&Game{}); err != nil {
 		log.Fatal(err)
 	}
-	select {}
+
 }
